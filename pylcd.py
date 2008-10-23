@@ -45,57 +45,26 @@ from telnetlib import Telnet
 class ServerError(Exception):
     pass
 
+def _name_clean(name):
+    """
+    All names used as IDs can't have whitespace
+    """
+    return "".join(name.split())
+
 class Client(object):
     """
     This class opens a connection to the LCD deamon
     on the specified host and encapsulates all the
     functions of the LCDd protocol.
     """
-    def __init__(self, host="localhost", port=13666):
+    def __init__(self, host="localhost", port=13666, name=None):
         """
-        Connect to the LCD daemon. Do *not* send
-        "hello" (connect() is used for that).
+        Connect to the LCD daemon.
         """
         self._conn = Telnet(host,port)
         self.screens = []
-        self.state = "unconnected"
-        self.server = None
-        self.s_version = None
-        self.proto = None
-        self.type = None
-        self.d_width = None
-        self.d_height = None
-        self.c_width = None
-        self.c_height = None
-        #self.connect()
 
-    def send(self,cmd):
-        """
-        Send "cmd" plus a linefeed to the server.
-        """
-        self._conn.write(cmd+"\n")
-
-    def read(self):
-        """
-        Read very eagerly, but not necessarily a whole line.
-        Return read data.
-        """
-        return self._conn.read_very_eager()
-
-    def readl(self):
-        """
-        Read and return a whole line. May block.
-        """
-        return self._conn.read_until("\n")    
-        
-    def connect(self):
-        """
-        Send connect message ("hello") to server and
-        return connection message. Also set internal
-        variables that can be read via getinfo().
-        """
-        self.send("hello")
-        line = self.readl().strip()
+        line = self._send_recv("hello")
         
         try:
             (self.state,
@@ -105,29 +74,62 @@ class Client(object):
              self.proto,
              self.type,
              c,
-             self.ds_width,
+             ds_width,
              c,
-             self.ds_height,
+             ds_height,
              c,
-             self.cs_width,
+             cs_width,
              c,
-             self.cs_height) = line.split()
+             cs_height) = line.split()
+
+            self.d_width = int(ds_width)
+            self.d_height = int(ds_height)
+            self.c_width = int(cs_width)
+            self.c_height = int(cs_height)
 
         except ValueError:
             self.ds_width="0"
             self.ds_height="0"
             self.cs_width="0"
             self.cs_height="0"
+            raise ServerError
 
-        self.d_width = int(self.ds_width)
-        self.d_height = int(self.ds_height)
-        self.c_width = int(self.cs_width)
-        self.c_height = int(self.cs_height)
+        if name:
+            self.client_set(name)
+        else:
+            self.name = None
 
-        line = line + self.read()
+    def _send(self, cmd):
+        """
+        Send "cmd" plus a linefeed to the server.
+        """
+        print cmd
+        self._conn.write(cmd+"\n")
 
+        # ignore listen/ignore for now
+        result = self._readl()
+        while True:
+            if result.startswith("ignore") or result.startswith("listen"):
+                result = self._readl()
+                continue
+            if result != "success":
+                raise ServerError(result)
+            else:
+                return
+
+    def _send_recv(self, cmd):
+        self._conn.write(cmd+"\n")
+        return self._readl()
+
+    def _readl(self):
+        """
+        Read and return a whole line. May block.
+        """
+        line = self._conn.read_until("\n").strip()
+        print line
         return line
-
+        #return self._conn.read_until("\n").strip()   
+        
     def getinfo(self):
         """
         Print information gathered during connect().
@@ -140,27 +142,23 @@ class Client(object):
         print "Display size: %sx%s (%s)"%(self.d_width,self.d_height,self.d_width*self.d_height)
         print "Cell size: %sx%s (%s)"%(self.c_width,self.c_height,self.c_width*self.c_height)
 
-    def client_set(self,id):
+    def set_name(self, name):
         """
-        Implement the client_set command, return server answer
+        Set the client name. Don't know where this is visible.
         """
-        self.send("client_set %s"%id)
-        return self.readl()
+
+        self.name = _name_clean(name)
+        self._send("client_set -name %s" % self.name)
 
     def screen_add(self, name):
         """     
         Implement the screen_add command, return server answer
-        """     
-        
-        self.send("screen_add %s" % name)
-        result = self.readl()
-
-        if result == "success":
-            new_screen = Screen(self, name)
-            self.screens.append(new_screen)
-            return new_screen
-        else:
-            raise ServerError(result)
+        """
+ 
+        self._send("screen_add %s" % name)
+        new_screen = Screen(self, name)
+        self.screens.append(new_screen)
+        return new_screen
 
     def screen_del(self, screen):
         """     
@@ -170,42 +168,54 @@ class Client(object):
         if not screen in self.screens:
             raise IndexError
 
-        self.send("screen_del %s"%id)
-        result = self.readl()
-
-        if result != "success":
-            raise ServerError(result)
+        self._send("screen_del %s"%id)
         self.remove(screen)
-
 
 class Screen(object):
     def __init__(self, client, name):
         self.client = client
-        self.name = name
+        self.name = _name_clean(name)
 
     def widget_add(self,id,type,params=""):
-        """     
+        """
         Implement the widget_add command, return server answer
         """
-        self.send("widget_add %s %s %s"%(id,type,params))
-        return self.readl()
+        self.client._send("widget_add %s %s %s" % (id,type,params))
 
-    def set(self,id,params):
-        """     
+    def set(self, **kwargs):
+        """
         Implement the screen_set command, return server answer
-        """     
-        self.send("screen_set %s %s"%(id,params))
-        return self.readl()
+        """
+
+        params = dict(
+                      name="name",
+                      width="wid",
+                      height="hgt",
+                      priority="priority",
+                      duration="duration",
+                      timeout="timeout",
+                      heartbeat="heartbeat",
+                      backlight="backlight",
+                      cursor_mode="cursor",
+                      cursor_x="cursor_x",
+                      cursor_y="cursor_y"
+                     )
+
+        print kwargs
+
+        for arg, val in kwargs.iteritems():
+            if arg in params:
+                self.client._send("screen_set %s -%s %s" %
+                     (self.name, params[arg], val))
 
 class Widget(object):
     def __init__(self, screen, name):
         self.screen = screen
-        self.name = name
+        self.name = _name_clean(name)
 
-    def set(self,id,data):
+    def set(self, data):
         """     
         Implement the widget_set command, return server answer
         """
-        self.send("widget_set %s %s %s" % (self.screen.name, self.name, data))
-        return self.readl()
+        self.screen.client._send("widget_set %s %s %s" % (self.screen.name, self.name, data))
 
