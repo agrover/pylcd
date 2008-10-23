@@ -16,9 +16,7 @@
 #
 # By reading this code you agree not to ridicule the author =)
 
-import string
-
-__version__="0.2"
+__version__="0.3"
 __author__="klausman-spam@schwarzvogel.de"
 __doc__="""PyLCD v%s (c) 2002, 2003 Tobias Klausman
 
@@ -53,7 +51,7 @@ class client:
         "hello" (connect() is used for that).
         """
         from telnetlib import Telnet
-        self.conn=Telnet(host,port)
+        self._conn = Telnet(host,port)
         # Various vars that need to be initialized
         self.state="unconnected"
         self.server="unknown"
@@ -69,20 +67,20 @@ class client:
         """
         Send "cmd" plus a linefeed to the server.
         """
-        self.conn.write(cmd+"\n")
+        self._conn.write(cmd+"\n")
 
     def read(self):
         """
         Read very eagerly, but not necessarily a whole line.
         Return read data.
         """
-        return self.conn.read_very_eager()
+        return self._conn.read_very_eager()
 
     def readl(self):
         """
         Read and return a whole line. May block.
         """
-        return self.conn.read_until("\n")    
+        return self._conn.read_until("\n")    
         
     def connect(self):
         """
@@ -91,24 +89,38 @@ class client:
         variables that can be read via getinfo().
         """
         self.send("hello")
-        line=string.strip(self.readl())
+        line = self.readl().strip()
         
         try:
-            (self.state,self.server,self.s_version,c,self.proto,self.type,c,self.ds_width,c,self.ds_height,c,self.cs_width,c,self.cs_height)=string.split(line," ")
+            (self.state,
+             self.server,
+             self.s_version,
+             c,
+             self.proto,
+             self.type,
+             c,
+             self.ds_width,
+             c,
+             self.ds_height,
+             c,
+             self.cs_width,
+             c,
+             self.cs_height) = line.split()
+
         except ValueError:
             self.ds_width="0"
             self.ds_height="0"
             self.cs_width="0"
             self.cs_height="0"
 
-        self.d_width=int(self.ds_width)
-        self.d_height=int(self.ds_height)
-        self.c_width=int(self.cs_width)
-        self.c_height=int(self.cs_height)
+        self.d_width = int(self.ds_width)
+        self.d_height = int(self.ds_height)
+        self.c_width = int(self.cs_width)
+        self.c_height = int(self.cs_height)
 
-        line=line+self.read()
+        line = line + self.read()
 
-        return (line)
+        return line
 
     def getinfo(self):
         """
