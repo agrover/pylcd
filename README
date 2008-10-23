@@ -1,0 +1,86 @@
+Python Library Documentation: module pylcd
+
+NAME
+    pylcd
+
+FILE
+    pylcd.py
+
+DESCRIPTION
+    # Copyright (C) 2002 Tobias Klausmann
+    #
+    # This program is free software; you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation; either version 2 of the License, or
+    # (at your option) any later version.
+    #
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+    #
+    # You should have received a copy of the GNU General Public License
+    # along with this program; if not, write to the Free Software
+    # Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+    #
+    # By reading this code you agree not to ridicule the author =)
+
+CLASSES
+    client
+    
+    class client
+     |  This class opens a connection to the LCD deamon
+     |  on the specified host and encapsulates all the
+     |  dunctions of the LCDd protocol.
+     |  
+     |  __init__(self, host='localhost', port=13666)
+     |      Connect to the LCD daemon. Do *not* send
+     |      "hello" (connect() is used for that).
+     |  
+     |  client_set(self, id)
+     |      Implement the client_set command, return server answer
+     |  
+     |  connect(self)
+     |      Send connect message ("hello") to server and
+     |      return connection message. Also set internal
+     |      variables that can be read via getinfo().
+     |  
+     |  getinfo(self)
+     |      Print information gathered during connect().
+     |  
+     |  read(self)
+     |      Read very eagerly, but not necessarily a whole line.
+     |      Return read data.
+     |  
+     |  readl(self)
+     |      Read and return a whole line. May block.
+     |  
+     |  remap(self, str)
+     |      Maps high-bit ascii charactes which often produce kanjii
+     |      on HD44780 displays to approximations. Returns string
+     |      with fixed characters.
+     |      This one is specially tailored to HD44780 displays. Later
+     |      versions (>=0.4.3) of LCDd do this by themselves.
+     |  
+     |  screen_add(self, id)
+     |      Implement the screen_add command, return server answer
+     |  
+     |  screen_del(self, id)
+     |      Implement the screen_del command, return server answer
+     |  
+     |  screen_set(self, id, params)
+     |      Implement the screen_set command, return server answer
+     |  
+     |  send(self, cmd)
+     |      Send "cmd" plus a linefeed to the server.
+     |  
+     |  widget_add(self, id, type, params='')
+     |      Implement the widget_add command, return server answer
+     |  
+     |  widget_set(self, screen, id, data)
+     |      Implement the widget_set command, return server answer
+
+DATA
+    __file__ = './pylcd.pyc'
+    __name__ = 'pylcd'
+
