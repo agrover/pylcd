@@ -39,29 +39,35 @@ Place, Suite 330, Boston, MA 02111-1307, USA.
 
 Please e-mail bugs to: %s""" % (__version__, __author__)
 
-class client:
+from exceptions import Exception
+from telnetlib import Telnet
+
+class ServerError(Exception):
+    pass
+
+class Client(object):
     """
     This class opens a connection to the LCD deamon
     on the specified host and encapsulates all the
     functions of the LCDd protocol.
     """
-    def __init__(self,host="localhost",port=13666):
+    def __init__(self, host="localhost", port=13666):
         """
         Connect to the LCD daemon. Do *not* send
         "hello" (connect() is used for that).
         """
-        from telnetlib import Telnet
         self._conn = Telnet(host,port)
-        # Various vars that need to be initialized
-        self.state="unconnected"
-        self.server="unknown"
-        self.s_version="unknown"
-        self.proto="unknown"
-        self.type="unknown"
-        self.d_width=0
-        self.d_height=0
-        self.c_width=0
-        self.c_height=0
+        self.screens = []
+        self.state = "unconnected"
+        self.server = None
+        self.s_version = None
+        self.proto = None
+        self.type = None
+        self.d_width = None
+        self.d_height = None
+        self.c_width = None
+        self.c_height = None
+        #self.connect()
 
     def send(self,cmd):
         """
@@ -141,27 +147,41 @@ class client:
         self.send("client_set %s"%id)
         return self.readl()
 
-    def screen_add(self,id):
+    def screen_add(self, name):
         """     
         Implement the screen_add command, return server answer
         """     
         
-        self.send("screen_add %s"%id)
-        return self.readl()
+        self.send("screen_add %s" % name)
+        result = self.readl()
 
-    def screen_del(self,id):
+        if result == "success":
+            new_screen = Screen(self, name)
+            self.screens.append(new_screen)
+            return new_screen
+        else:
+            raise ServerError(result)
+
+    def screen_del(self, screen):
         """     
         Implement the screen_del command, return server answer
-        """     
-        self.send("screen_del %s"%id)
-        return self.readl()
+        """
 
-    def screen_set(self,id,params):
-        """     
-        Implement the screen_set command, return server answer
-        """     
-        self.send("screen_set %s %s"%(id,params))
-        return self.readl()
+        if not screen in self.screens:
+            raise IndexError
+
+        self.send("screen_del %s"%id)
+        result = self.readl()
+
+        if result != "success":
+            raise ServerError(result)
+        self.remove(screen)
+
+
+class Screen(object):
+    def __init__(self, client, name):
+        self.client = client
+        self.name = name
 
     def widget_add(self,id,type,params=""):
         """     
@@ -170,10 +190,22 @@ class client:
         self.send("widget_add %s %s %s"%(id,type,params))
         return self.readl()
 
-    def widget_set(self,screen,id,data):
+    def set(self,id,params):
+        """     
+        Implement the screen_set command, return server answer
+        """     
+        self.send("screen_set %s %s"%(id,params))
+        return self.readl()
+
+class Widget(object):
+    def __init__(self, screen, name):
+        self.screen = screen
+        self.name = name
+
+    def set(self,id,data):
         """     
         Implement the widget_set command, return server answer
         """
-        self.send("widget_set %s %s %s"%(screen,id,data))
+        self.send("widget_set %s %s %s" % (self.screen.name, self.name, data))
         return self.readl()
 
