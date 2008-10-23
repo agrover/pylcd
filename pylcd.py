@@ -1,4 +1,5 @@
 # Copyright (C) 2002 Tobias Klausmann
+# Copyright (C) 2008 Andy Grover <andy@groveronline.com>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,6 +46,50 @@ from telnetlib import Telnet
 class ServerError(Exception):
     pass
 
+PRIO_EMERG = 16
+PRIO_VHIGH = 32
+PRIO_HIGH = 64
+PRIO_NORMAL = 128
+PRIO_LOW = 192
+PRIO_VLOW = 224
+
+W_STRING   = "string"
+W_HBAR     = "hbar"
+W_VBAR     = "vbar"
+W_ICON     = "icon"
+W_TITLE    = "title"
+W_SCROLLER = "scroller"
+W_FRAME    = "frame"
+W_NUM      = "num"
+
+ICON_BLOCK_FILLED = "BLOCK_FILLED"
+ICON_HEART_OPEN = "HEART_OPEN"
+ICON_HEART_FILLED = "HEART_FILLED"
+ICON_ARROW_UP = "ARROW_UP"
+ICON_ARROW_DOWN = "ARROW_DOWN"
+ICON_ARROW_LEFT = "ARROW_LEFT"
+ICON_ARROW_RIGHT = "ARROW_RIGHT"
+ICON_CHECKBOX_OFF = "CHECKBOX_OFF"
+ICON_CHECKBOX_ON = "CHECKBOX_ON"
+ICON_CHECKBOX_GRAY = "CHECKBOX_GRAY"
+ICON_SELECTOR_AT_LEFT = "SELECTOR_AT_LEFT"
+ICON_SELECTOR_AT_RIGHT = "SELECTOR_AT_RIGHT"
+ICON_ELLIPSIS = "ELLIPSIS"
+ICON_STOP = "STOP"
+ICON_PAUSE = "PAUSE"
+ICON_PLAY = "PLAY"
+ICON_PLAYR = "PLAYR"
+ICON_FF = "FF"
+ICON_FR = "FR"
+ICON_NEXT = "NEXT"
+ICON_PREV = "PREV"
+ICON_REC = "REC"
+
+DIR_HORIZ = "h"
+DIR_HORIZ_MARQUEE = "m"
+DIR_VERT  = "v"
+
+
 def _name_clean(name):
     """
     All names used as IDs can't have whitespace
@@ -53,7 +98,7 @@ def _name_clean(name):
 
 class Client(object):
     """
-    This class opens a connection to the LCD deamon
+    This class opens a connection to the LCD daemon
     on the specified host and encapsulates all the
     functions of the LCDd protocol.
     """
@@ -99,6 +144,24 @@ class Client(object):
         else:
             self.name = None
 
+    def _handle_server_msgs(self):
+
+        ignored_msgs = ("ignore", "listen", "key")
+
+        while True:
+            result = self._readl()
+            if result.split()[0] in ignored_msgs:
+                continue
+            elif result == "success":
+                return
+            elif result == "bye":
+                print "server shutdown"
+            elif result.split()[0] == "huh?":
+                raise ServerError(result)
+            else:
+                print "unknown svr msg %s" % result
+            
+
     def _send(self, cmd):
         """
         Send "cmd" plus a linefeed to the server.
@@ -118,7 +181,7 @@ class Client(object):
                 return
 
     def _send_recv(self, cmd):
-        self._conn.write(cmd+"\n")
+        self._conn.write(cmd + "\n")
         return self._readl()
 
     def _readl(self):
@@ -171,16 +234,40 @@ class Client(object):
         self._send("screen_del %s"%id)
         self.remove(screen)
 
+    def add_key(self, keyname):
+        """
+        Tell the server you want to handle a keypress.
+        keyname should be "Up", "Down", "Enter", "Escape", etc.
+        """
+        self._send("client_add_key %s" % keyname)
+
+    def del_key(self, keyname):
+        """
+        Tell the server you no longer want to handle the key.
+        """
+        self._send("client_del_key %s" % keyname)
+
 class Screen(object):
     def __init__(self, client, name):
         self.client = client
         self.name = _name_clean(name)
 
-    def widget_add(self,id,type,params=""):
+    def widget_add(self, name, type):
         """
         Implement the widget_add command, return server answer
         """
-        self.client._send("widget_add %s %s %s" % (id,type,params))
+        self.client._send("widget_add %s %s %s" %
+            (self.name, name, type))
+
+        if type in widget_types:
+            return widget_types[type](self, name)
+
+    def widget_del(self, name):
+        """
+        Implement the widget_del command, return server answer
+        """
+        self.client._send("widget_del %s %s" %
+            (self.screen.name, self.name))
 
     def set(self, **kwargs):
         """
@@ -219,3 +306,52 @@ class Widget(object):
         """
         self.screen.client._send("widget_set %s %s %s" % (self.screen.name, self.name, data))
 
+class StringWidget(Widget):
+    def set(self, x, y, text):
+        super(StringWidget, self).set("%s %s %s" % (x, y, text))
+
+class HBarWidget(Widget):
+    def set(self, x, y, length):
+        super(HBarWidget, self).set("%s %s %s" % (x, y, length))
+
+class VBarWidget(Widget):
+    def set(self, x, y, length):
+        super(VBarWidget, self).set("%s %s %s" % (x, y, length))
+
+class IconWidget(Widget):
+    def set(self, x, y, icon):
+        super(IconWidget, self).set("%s %s %s" % (x, y, icon))
+
+class TitleWidget(Widget):
+    def set(self, title):
+        super(TitleWidget, self).set(title)
+
+class ScrollerWidget(Widget):
+    """
+    Positive speeds indicate frames per movement.
+    Negative speeds indicate movements per frame.
+    """
+    def set(self, left, top, right, bottom, direction, speed, text):
+        super(ScrollerWidget, self).set("%s %s %s %s %s %s %s" %
+            (left, top, right, bottom, direction, speed, text))
+
+class FrameWidget(Widget):
+    """
+    Not implemented yet
+    """
+    pass
+
+class NumWidget(Widget):
+    def set(self, x, num):
+        super(NumWidget, self).set("%s %s" % (x, num))
+
+widget_types = {
+"string" : StringWidget,
+"hbar" : HBarWidget,
+"vbar" : VBarWidget,
+"icon" : IconWidget,
+"title" : TitleWidget,
+"scroller" : ScrollerWidget,
+"frame" : FrameWidget,
+"num" : NumWidget
+}
