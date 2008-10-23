@@ -65,22 +65,6 @@ class client:
         self.c_width=0
         self.c_height=0
 
-        # A translation table
-        # FIXME: LCDd does char translation since 0.4.3,
-        # this probably should be detected and stuff
-        self.transtable=string.maketrans("µÀÁÂÃÅÈÉÊËÌÍÎÏĞÑÒÓÔÕ×ØÙÚÛİàáâãåçèéêëìíîïñòóôõøùúûÆæäöüßÄÖÜ\\","äAAAAAEEEEIIIIDNOOOOxOUUUYaaaaaceeeeiiiinooooouuu\341\341\341\357\365\342\341\357\365\315")
-
-        self.deltable=""
-        for i in range(160,181):
-            self.deltable=self.deltable+chr(i)
-
-        for i in range(182,192):
-            self.deltable=self.deltable+chr(i)
-
-        for i in (222,240,247,254,255):
-            self.deltable=self.deltable+chr(i)
-
-
     def send(self,cmd):
         """
         Send "cmd" plus a linefeed to the server.
@@ -180,15 +164,4 @@ class client:
         """
         self.send("widget_set %s %s %s"%(screen,id,data))
         return self.readl()
-    
-    def remap(self,str):
-        """
-        Maps high-bit ascii charactes which often produce kanjii
-        on HD44780 displays to approximations. Returns string
-        with fixed characters.
-        This one is specially tailored to HD44780 displays. Later
-        versions (>=0.4.3) of LCDd do this by themselves.
-        """
-        ret=string.translate(str,self.transtable,self.deltable)
-        return(ret)
-        
+
