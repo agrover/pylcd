@@ -1,31 +1,20 @@
 #!/usr/bin/python -tt
-import sys,pylcd,os
+import sys
+import pylcd
+import os
 
-p=pylcd.client()
-print "Connect message:", p.connect()
-print "Info as know by the module:"
-p.getinfo()
-print "Setting some info to the display."
+c = pylcd.Client()
+s = pylcd.Screen()
+w1 = pylcd.StringWidget(1, 1, "Hello from Python")
+w2 = pylcd.StringWidget(1, 2, "chars are %s x %s" % (c.c_width, c.c_height))
+s.add_widgets(w1, w2)
+if c.d_height == 4 and c.d_width == 20:
+    w3 = pylcd.HBarWidget(1, 4, 20)
+    s.add_widgets(w3)
+c.add_screens(s)
+c.update()
 
-(sysname, nodename, release, version, machine)=os.uname()
-
-s="s"
-w1="w1"
-w2="w2"
-w3="w3"
-
-p.screen_add(s)
-p.widget_add(s,w1,"string")
-p.widget_add(s,w2,"string")
-p.widget_add(s,w3,"string")
-p.widget_set(s,w1,"1 1 'Hello, LCD world!'")
-print "printing 'Hello, LCD world!'"
-p.widget_set(s,w2,"1 2 '%s: %s'"%(nodename, release))
-print "printing '%s: %s'"%(nodename, release)
-p.widget_set(s,w3,"1 3 'дцья'")
-print "printing 'дцья'"
-
-print "All done."
+print "Screens added: %d" % len(c.screens)
 
 try:
     raw_input("Press a key to continue")
