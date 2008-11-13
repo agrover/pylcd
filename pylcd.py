@@ -1,4 +1,4 @@
-# Copyright (C) 2002 Tobias Klausmann
+# Copyright (C) 2002, 2003 Tobias Klausmann
 # Copyright (C) 2008 Andy Grover <andy@groveronline.com>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 # By reading this code you agree not to ridicule the author =)
 
 __version__="0.3"
-__author__="klausman-spam@schwarzvogel.de"
+__author__="andy@groveronline.com"
 __doc__="""PyLCD v%s (c) 2002, 2003 Tobias Klausman
 
 PyLCD is a Library that interfaces with the LCDproc daemon. It abstracts the
@@ -96,143 +96,93 @@ def _name_clean(name):
     """
     return "".join(name.split())
 
+_counter = 0
+def _name_gen(obj):
+    global _counter
+    _counter += 1
+    return obj.__class__.__name__ + str(_counter)
+
 class Client(object):
     """
     This class opens a connection to the LCD daemon
     on the specified host and encapsulates all the
     functions of the LCDd protocol.
     """
-    def __init__(self, host="localhost", port=13666, name=None):
+    def __init__(self, host="localhost", port=13666):
         """
         Connect to the LCD daemon.
         """
+
+        self.name = _name_gen(self)
         self._conn = Telnet(host,port)
         self.screens = []
-
-        line = self._send_recv("hello")
         
         try:
-            (self.state,
-             self.server,
-             self.s_version,
-             c,
-             self.proto,
-             self.type,
-             c,
-             ds_width,
-             c,
-             ds_height,
-             c,
-             cs_width,
-             c,
-             cs_height) = line.split()
-
-            self.d_width = int(ds_width)
-            self.d_height = int(ds_height)
-            self.c_width = int(cs_width)
-            self.c_height = int(cs_height)
+            response = self._send_recv("hello").split()
+            self.server = response[1]
+            self.s_version = response[2]
+            self.proto = response[4]
+            self.type = response[5]
+            self.d_width = int(response[7])
+            self.d_height = int(response[9])
+            self.c_width = int(response[11])
+            self.c_height = int(response[13])
 
         except ValueError:
-            self.ds_width="0"
-            self.ds_height="0"
-            self.cs_width="0"
-            self.cs_height="0"
-            raise ServerError
-
-        if name:
-            self.client_set(name)
-        else:
-            self.name = None
-
-    def _handle_server_msgs(self):
-
-        ignored_msgs = ("ignore", "listen", "key")
-
-        while True:
-            result = self._readl()
-            if result.split()[0] in ignored_msgs:
-                continue
-            elif result == "success":
-                return
-            elif result == "bye":
-                print "server shutdown"
-            elif result.split()[0] == "huh?":
-                raise ServerError(result)
-            else:
-                print "unknown svr msg %s" % result
-            
+            raise ServerError("could not parse server response")
 
     def _send(self, cmd):
-        """
-        Send "cmd" plus a linefeed to the server.
-        """
-        print cmd
-        self._conn.write(cmd+"\n")
-
-        # ignore listen/ignore for now
-        result = self._readl()
-        while True:
-            if result.startswith("ignore") or result.startswith("listen"):
-                result = self._readl()
-                continue
-            if result != "success":
-                raise ServerError(result)
-            else:
-                return
+        print "sent: "+cmd
+        self._conn.write(cmd + "\n")
+        self._handle_server_msgs()
 
     def _send_recv(self, cmd):
         self._conn.write(cmd + "\n")
         return self._readl()
 
     def _readl(self):
-        """
-        Read and return a whole line. May block.
-        """
-        line = self._conn.read_until("\n").strip()
-        print line
-        return line
-        #return self._conn.read_until("\n").strip()   
-        
-    def getinfo(self):
-        """
-        Print information gathered during connect().
-        """
-        print "Connection state:",  self.state
-        print "Server type:", self.server
-        print "Server version: ", self.s_version
-        print "Protocol version:",  self.proto
-        print "LCD type:", self.type
-        print "Display size: %sx%s (%s)"%(self.d_width,self.d_height,self.d_width*self.d_height)
-        print "Cell size: %sx%s (%s)"%(self.c_width,self.c_height,self.c_width*self.c_height)
+        return self._conn.read_until("\n").strip()   
 
-    def set_name(self, name):
-        """
-        Set the client name. Don't know where this is visible.
-        """
+    # get >=1 msgs from server
+    def _handle_server_msgs(self):
 
-        self.name = _name_clean(name)
-        self._send("client_set -name %s" % self.name)
+        ignored_msgs = ("ignore", "listen", "key")
+        got_success = False
 
-    def screen_add(self, name):
-        """     
-        Implement the screen_add command, return server answer
-        """
- 
-        self._send("screen_add %s" % name)
-        new_screen = Screen(self, name)
-        self.screens.append(new_screen)
-        return new_screen
+        results = [self._readl()]
+        results.extend(self._conn.read_very_eager().split())
 
-    def screen_del(self, screen):
-        """     
-        Implement the screen_del command, return server answer
-        """
+        for result in results:
+            print "HM: " + result
+            if result.split()[0] in ignored_msgs:
+                # TODO dispatch
+                print "ignored_msg: " + result
+                continue
+            elif result == "success":
+                got_success = True
+            elif result == "bye":
+                print "server shutdown"
+            elif result.split()[0] == "huh?":
+                raise ServerError(result)
+            else:
+                raise ServerError("unknown svr msg %s" % result)
 
-        if not screen in self.screens:
-            raise IndexError
+        return got_success
 
-        self._send("screen_del %s"%id)
-        self.remove(screen)
+    def add_screens(self, *args):
+        for arg in args:
+            if not isinstance(arg, Screen):
+                raise TypeError
+            self.screens.append(arg)
+            arg.client = self
+
+    def remove_screens(self, *args):
+        for arg in args:
+            if not arg in self.screens:
+                raise IndexError
+            self._send("screen_del %s" % arg.name)
+            self.screens.remove(arg)
+            arg.client = None
 
     def add_key(self, keyname):
         """
@@ -248,26 +198,32 @@ class Client(object):
         self._send("client_del_key %s" % keyname)
 
 class Screen(object):
-    def __init__(self, client, name):
-        self.client = client
-        self.name = _name_clean(name)
+    def __init__(self):
+        self.name = _name_gen(self)
+        self.on_server = False
+        self.widgets = []
+        self.client = None
 
-    def widget_add(self, name, type):
+    def add_widgets(self, *args):
         """
         Implement the widget_add command, return server answer
         """
-        self.client._send("widget_add %s %s %s" %
-            (self.name, name, type))
+        for arg in args:
+            if not isinstance(arg, Widget):
+                raise TypeError
+            self.widgets.append(arg)
+            arg.screen = self
 
-        if type in widget_types:
-            return widget_types[type](self, name)
+        #self.client._send("widget_add %s %s %s" %
+        #    (self.name, name, type))
 
-    def widget_del(self, name):
-        """
-        Implement the widget_del command, return server answer
-        """
-        self.client._send("widget_del %s %s" %
-            (self.screen.name, self.name))
+    def remove_widgets(self, *args):
+        for arg in args:
+            if not arg in self.widgets:
+                raise IndexError
+            self._send("widget_del %s %s" % (self.name, arg.name))
+            arg.on_server = False
+            self.widgets.remove(arg)
 
     def set(self, **kwargs):
         """
@@ -295,24 +251,59 @@ class Screen(object):
                 self.client._send("screen_set %s -%s %s" %
                      (self.name, params[arg], val))
 
-class Widget(object):
-    def __init__(self, screen, name):
-        self.screen = screen
-        self.name = _name_clean(name)
+    def update(self):
+        if not self.on_server:
+            self.client._send("screen_add %s" % self.name)
+            self.on_server = True
+        for widget in self.widgets:
+            widget.update()
 
-    def set(self, data):
-        """     
-        Implement the widget_set command, return server answer
-        """
+#
+# virtual base class, never instantiate
+#
+class Widget(object):
+    def __init__(self):
+        self.name = _name_gen(self)
+        self.dirty = True
+        self.screen = None
+        self.on_server = False
+
+    def __setattr__(self, name, value):
+        if name != "dirty":
+            super(Widget, self).__setattr__("dirty", True)
+        super(Widget, self).__setattr__(name, value)
+
+    def update(self, data):
+        if not self.on_server:
+            self.screen.client._send("widget_add %s %s %s" %
+                (self.screen.name, self.name, self.type))
+            self.on_server = True
+        if not self.dirty:
+            return
         self.screen.client._send("widget_set %s %s %s" % (self.screen.name, self.name, data))
+        self.dirty = False
 
 class StringWidget(Widget):
-    def set(self, x, y, text):
-        super(StringWidget, self).set("%s %s %s" % (x, y, text))
+    def __init__(self, x=None, y=None, text=None):
+        super(StringWidget, self).__init__()
+        self.x = x
+        self.y = y
+        self.text = text
+        self.type = "string"
+
+    def update(self):
+        super(StringWidget, self).update("%s %s %s" % (self.x, self.y, self.text))
 
 class HBarWidget(Widget):
-    def set(self, x, y, length):
-        super(HBarWidget, self).set("%s %s %s" % (x, y, length))
+    def __init__(self, x=None, y=None, length=None):
+        super(HBarWidget, self).__init__()
+        self.x = x
+        self.y = y
+        self.length = length
+        self.type = "hbar"
+
+    def update(self):
+        super(HBarWidget, self).update("%s %s %s" % (self.x, self.y, self.length))
 
 class VBarWidget(Widget):
     def set(self, x, y, length):
@@ -345,13 +336,3 @@ class NumWidget(Widget):
     def set(self, x, num):
         super(NumWidget, self).set("%s %s" % (x, num))
 
-widget_types = {
-"string" : StringWidget,
-"hbar" : HBarWidget,
-"vbar" : VBarWidget,
-"icon" : IconWidget,
-"title" : TitleWidget,
-"scroller" : ScrollerWidget,
-"frame" : FrameWidget,
-"num" : NumWidget
-}
