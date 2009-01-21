@@ -184,6 +184,10 @@ class Client(object):
             self.screens.remove(arg)
             arg.client = None
 
+    def update(self):
+        for screen in self.screens:
+            screen.update()
+
     def add_key(self, keyname):
         """
         Tell the server you want to handle a keypress.
