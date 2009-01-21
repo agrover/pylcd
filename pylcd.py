@@ -296,7 +296,7 @@ class StringWidget(Widget):
         self.type = "string"
 
     def update(self):
-        super(StringWidget, self).update("%s %s %s" % (self.x, self.y, self.text))
+        super(StringWidget, self).update("%s %s {%s}" % (self.x, self.y, self.text))
 
 class HBarWidget(Widget):
     def __init__(self, x=None, y=None, length=None):
